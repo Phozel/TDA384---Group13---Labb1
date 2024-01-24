@@ -1,3 +1,6 @@
+import java.util.ArrayList;
+import java.util.concurrent.Semaphore;
+
 import TSim.*;
 
 public class Lab1 {
@@ -5,33 +8,59 @@ public class Lab1 {
   public Lab1(int speed1, int speed2) {
     
 	TSimInterface tsi = TSimInterface.getInstance();
-    
-	Switch switch1 = new Switch(17,7, tsi);
-	Switch switch2 = new Switch(15,9, tsi);
-	Switch switch3 = new Switch(4,9, tsi);
-	Switch switch4 = new Switch(3,11, tsi);
 	
     Train train1 = new Train(1, speed1);
-    //Train train2 = new Train(2, speed2);
+    Train train2 = new Train(2, speed2);
+    ArrayList trainList = new ArrayList();
+    trainList.add(train1);
+    trainList.add(train2);
     
     Thread t1 = new Thread(train1);
-    //Thread t2 = new Thread(train2);
+    Thread t2 = new Thread(train2);
     
+    Semaphore startSem1 = new Semaphore(1);
+    Semaphore startSem2 = new Semaphore(1);
+    Semaphore stationSem1 = new Semaphore(1);
+    Semaphore stationSem2 = new Semaphore(1);
+    
+    Semaphore switchSem1 = new Semaphore(1);
+    Semaphore switchSem2 = new Semaphore(1);
+    Semaphore switchSem3 = new Semaphore(1);
+    Semaphore switchSem4 = new Semaphore(1);
+    
+    Switch switch1 = new Switch(17,7, 1, tsi, switchSem1, trainList);
+	Switch switch2 = new Switch(15,9, 1, tsi, switchSem2, trainList);
+	Switch switch3 = new Switch(4,9, 0, tsi, switchSem3, trainList);
+	Switch switch4 = new Switch(3,11, 0, tsi, switchSem4, trainList);
     
     try {
       tsi.setSpeed(train1.getId(),train1.getSpeed());
-      //tsi.setSpeed(train2.getId(), train2.getSpeed());
-      /*tsi.setSwitch(17, 7, 0);
-      tsi.setSwitch(15, 9, 0);
-      tsi.setSwitch(3, 11, 0);*/
+      tsi.setSpeed(train2.getId(), train2.getSpeed());
+      tsi.setSwitch(17,7, 0);
+  	  tsi.setSwitch(15,9, 0);
+  	  tsi.setSwitch(4,9, 0);
+  	  tsi.setSwitch(3,11, 0);
       try {
 		while(true) {
-    	  SensorEvent event = tsi.getSensor(1);
-    	  switch1.changeSwitch(event);
-    	  switch2.changeSwitch(event);
-    	  switch3.changeSwitch(event);
-    	  switch4.changeSwitch(event);
-    	  System.out.println(event.getXpos() + " " + event.getYpos() + " " + event.getStatus());
+			int x = 1;
+			if (x == 0) {
+	    	  SensorEvent event = tsi.getSensor(1);
+	    	  switch1.onSensorEvent(event);
+	    	  switch2.onSensorEvent(event);
+	    	  switch3.onSensorEvent(event);
+	    	  switch4.onSensorEvent(event);
+	    	  x++;
+			}
+			else if (x == 1) {
+	    	  SensorEvent event2 = tsi.getSensor(2);
+	    	  switch1.onSensorEvent(event2);
+	    	  switch2.onSensorEvent(event2);
+	    	  switch3.onSensorEvent(event2);
+	    	  switch4.onSensorEvent(event2);
+	    	  x--;
+			}
+    	  
+    	  //System.out.println(event.getXpos() + " " + event.getYpos() + " " + event.getStatus());
 		}
 	} catch (InterruptedException e) {
 		// TODO Auto-generated catch block
@@ -74,19 +103,17 @@ public class Lab1 {
 	
 		public void setId(int id) {
 			this.id = id;
-		}
+		}		// TODO Auto-generated method stub
+
 	  
 	  @Override
 	  public void run() {
 		  // TODO Auto-generated method stub
 	  }
-	  
-	  public void switchTrack(SensorEvent e) {
-		  
-	  }
   }
   
   class Switch{
+	  
 	  
 	  final int posX;
 	  final int posY;
@@ -97,10 +124,19 @@ public class Lab1 {
 	  Sensor eastSensor;
 	  Sensor southSensor;
 	  
-	  public Switch(int posX, int posY, TSimInterface tsi) {
+	  Semaphore switchSem;
+	  
+	  boolean hasActiveSensor = false;
+	  int orientation;
+	  ArrayList trainList;
+	  
+	  public Switch(int posX, int posY, int ori, TSimInterface tsi, Semaphore switchSem, ArrayList trainList) {
 		  this.posX = posX;
 		  this.posY = posY;
+		  this.orientation = ori;
 		  this.tsi = tsi;
+		  this.switchSem = switchSem;
+		  this.trainList = trainList;
 		  
 		  initSensors();
 	  }
@@ -111,13 +147,33 @@ public class Lab1 {
 		  southSensor = new Sensor(posX, posY+1);
 	  }
 	  
-	  void changeSwitch(SensorEvent e) {
+	  void onSensorEvent(SensorEvent e) {
 		  
-		  switch(e.getStatus()) {
-		  case 1:
+
+		
+		if(switchSem.tryAcquire()) {	  
+			this.hasActiveSensor = true;
+			changeSwitch(e);
+			this.hasActiveSensor = false;
+			switchSem.release();
+		}
+		else {
+			stopTrain(e.getTrainId());
+		}
+		
+
+	  }
+	  
+	  private void stopTrain(int trainId) {
+		  int temp = trainId -1;
+		  ((Lab1.Train) this.trainList.get(temp)).setSpeed(0);
+	}
+
+	void changeSwitch(SensorEvent e) {
+		  if(this.orientation == 1) {
 			  if(e.getXpos() == westSensor.posX && e.getYpos() == westSensor.posY) {
 				  try {
-					this.tsi.setSwitch(this.posX, this.posY, 0);
+					  this.tsi.setSwitch(this.posX, this.posY, 0);
 				} catch (CommandException e1) {
 					// TODO Auto-generated catch block
 					e1.printStackTrace();
@@ -125,23 +181,32 @@ public class Lab1 {
 			  }
 			  else if(e.getXpos() == eastSensor.posX && e.getYpos() == eastSensor.posY) {
 				  try {
+					  System.out.println("is wrong");
 						this.tsi.setSwitch(this.posX, this.posY, 0);
 					} catch (CommandException e1) {
 						// TODO Auto-generated catch block
 						e1.printStackTrace();
 					}
 			  }
-			  /*else if(e.getXpos() == southSensor.posX && e.getYpos() == southSensor.posY) {
+		  }
+		  else if(this.orientation == 0) {
+			  if(e.getXpos() == westSensor.posX && e.getYpos() == westSensor.posY) {
 				  try {
-						this.tsi.setSwitch(this.posX, this.posY, 0);
+					  this.tsi.setSwitch(this.posX, this.posY, 1);
+				} catch (CommandException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+			  }
+			  else if(e.getXpos() == eastSensor.posX && e.getYpos() == eastSensor.posY) {
+				  try {
+					  System.out.println("Should be correct");
+						this.tsi.setSwitch(this.posX, this.posY, 1);
 					} catch (CommandException e1) {
 						// TODO Auto-generated catch block
 						e1.printStackTrace();
 					}
-			  }*/
-			  break;
-		  case 2:
-			  break;
+			  }
 		  }
 	  }
   }
