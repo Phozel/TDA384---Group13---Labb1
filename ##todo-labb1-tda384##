@@ -1,0 +1,40 @@
+Add functionallity to lock switches
+    Maybe check whether or not one switch "pair" has an active switch and if so lock the other one in the pair?
+
+Make trains stop correctly
+     Check if train can go south at a switch
+     if not: stop
+
+Make trains able to choose the "south" track in intersections
+
+Make trains stop at stations
+     Includes making them "invert" their previous direction upon starting again
+[1,2,3,4]
+
+{(x,y):Sensor, }
+
+if counter <= 2 && has terminal
+   	aquire terminal
+	change switch
+	pass switch
+	
+else if switch sem is aquired already && has terminal
+        stop train
+	wait until switch semaphore is free
+	start train
+	
+else if switch sem is aquired already && !has terminal
+
+     if switch counter > 0
+	stop train
+	wait until switch semaphore is free
+	start train
+
+     else
+	release the semaphore
+	aquire the semaphore
+	change switch
+	pass switch
+
+else
+	aquire next switch
