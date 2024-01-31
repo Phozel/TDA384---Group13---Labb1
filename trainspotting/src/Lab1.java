@@ -7,6 +7,9 @@ import java.util.concurrent.Semaphore;
 import TSim.*;
 
 public class Lab1 {
+	
+	Thread t1;
+	Thread t2;
 
 	public Lab1(int speed1, int speed2) {
 
@@ -15,11 +18,8 @@ public class Lab1 {
 		Train train1 = new Train(1, speed1, tsi);
 		Train train2 = new Train(2, speed2, tsi);
 
-		Thread t1 = new Thread(train1);
-		Thread t2 = new Thread(train2);
-
-		// TrainThread trainThread1 = new TrainThread(train1, t1);
-		// TrainThread trainThread2 = new TrainThread(train2, t2);
+		//t1 = new Thread(train1);
+		//t2 = new Thread(train2);
 
 		ArrayList trainList = new ArrayList();
 		trainList.add(train1);
@@ -61,12 +61,15 @@ public class Lab1 {
 		train1.acquireTerminals(terminalList3);
 		train2.acquireTerminals(terminalList3);
 
-		t1.start();
-		t2.start();
+		
+		train1.start();
+		train2.start();
+		//t1.start();
+		//t2.start();
 
 		try {
-			tsi.setSpeed(train1.getId(), train1.getSpeed());
-			tsi.setSpeed(train2.getId(), train2.getSpeed());
+			tsi.setSpeed(train1.getTrainId(), train1.getSpeed());
+			tsi.setSpeed(train2.getTrainId(), train2.getSpeed());
 			tsi.setSwitch(17, 7, 1);
 			tsi.setSwitch(15, 9, 1);
 			tsi.setSwitch(4, 9, 0);
@@ -76,13 +79,14 @@ public class Lab1 {
 			e.printStackTrace(); // or only e.getMessage() for the error
 			System.exit(1);
 		}
-
+		
+		
 	}
-
-	class Train implements Runnable {
+	
+	class Train extends Thread {
 
 		private volatile int speed;
-		private int maxSpeed = 50; // TODO: Byt denna mot en
+		private int maxSpeed = 20; // TODO: Byt 
 		private int id;
 		volatile int sensorCounter = 0;
 		
@@ -115,6 +119,16 @@ public class Lab1 {
 		public int getSpeed() {
 			return speed;
 		}
+		
+		public void setSpeed(int newSpeed) {
+			try {
+				this.speed = newSpeed;
+				this.tsi.setSpeed(this.id, speed);
+			} catch (CommandException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
 
 		public void brake() {
 			try {
@@ -125,7 +139,7 @@ public class Lab1 {
 			}
 		}
 
-		public int getId() {
+		public int getTrainId() {
 			return id;
 		}
 
@@ -147,14 +161,6 @@ public class Lab1 {
 
 		public void acquireTerminals(ArrayList<Terminal> terminalList) {
 			this.terminalList = terminalList;
-		}
-
-		public void incSemCounter() {
-			this.semCounter++;
-		}
-
-		public boolean checkSemCounter() {
-			return this.semCounter < 1;
 		}
 
 		@Override
@@ -262,7 +268,7 @@ public class Lab1 {
 			this.trainList.get(trainId - 1).brake();
 		}
 
-		private void goSouth(int trainId) { //våra nuvarande felmeddelanden är från när denna metod körs av att tåget kör på en till/andra sensor
+		private void goSouth(int trainId) {
 			try {
 					this.tsi.setSwitch(this.posX, this.posY, this.orientation * -1 + 1);
 				//this.tsi.setSwitch(this.posX, this.posY, this.orientation * -1 + 1);
@@ -284,6 +290,7 @@ public class Lab1 {
 			if (this.sensorCounter < 2) {
 				// East -> West orientation
 				if (this.orientation == 1) {
+					
 					if (e.getXpos() == westSensor.posX && e.getYpos() == westSensor.posY) {
 						try {
 							System.out.println("rad 297 " + switchNeighList.get(0));
@@ -319,7 +326,7 @@ public class Lab1 {
 								this.tsi.setSwitch(this.posX, this.posY, 0);
 							} else {
 								goSouth(e.getTrainId());
-							} 
+							}
 						} catch (CommandException e1) {
 							// TODO Auto-generated catch block
 							e1.printStackTrace();
@@ -327,9 +334,24 @@ public class Lab1 {
 						}
 						semaphoreToRelease = neighborAmount - 1;
 					}
+					else if (e.getXpos() == southSensor.posX && e.getYpos() == southSensor.posY){ //crashes here now for some reason
+						try {
+						 if (switchNeighList.get(neighborAmount - 1).tryAcquire()) {
+							System.out.println("Acquired semaphore");
+							this.tsi.setSwitch(this.posX, this.posY, 1);
+						} else {
+							stopTrain(e.getTrainId());
+						}
+						
+						} catch (CommandException e1) {
+							System.out.println("rad 345 " + this.posX + " " + this.posY);
+							e1.printStackTrace();
+						}
+					}
 				}
 				// West -> East orientation
 				else if (this.orientation == 0) {
+					//System.out.println("Is in West East atleast");
 					if (e.getXpos() == westSensor.posX && e.getYpos() == westSensor.posY) {
 						try {
 							if (hasTerminal) {
@@ -372,7 +394,19 @@ public class Lab1 {
 							//releaseSelf();
 						}*/
 						semaphoreToRelease = neighborAmount - 1;
+					} else if ((e.getXpos() == southSensor.posX && e.getYpos() == southSensor.posY)){ //crashes here now for some reason
+						try {
+							 if (switchNeighList.get(neighborAmount - 1).tryAcquire()) {
+								System.out.println("Acquired semaphore");
+								this.tsi.setSwitch(this.posX, this.posY, 0);
+							} else {
+								stopTrain(e.getTrainId());
+							}
+						} catch (CommandException e1) {
+							
+						}
 					}
+					
 				}
 			}
 			newCheckSensorCounter(semaphoreToRelease);
@@ -472,41 +506,46 @@ public class Lab1 {
 		void onTerminalSensorEvent(SensorEvent e) {
 			//System.out.println("hej1");
 
-			boolean hasStarted = trainList.get(e.getTrainId() - 1).getHasStarted();
+			int trainID = e.getTrainId();
+			boolean hasStarted = trainList.get(trainID - 1).getHasStarted();
+			int i = 0;
 
 			if (!hasStarted && e.getStatus() == 1) {
-				startTrain(e.getTrainId());
-				//System.out.println("hej2");
+				startTrain(trainID);
 			} else if (e.getStatus() == 2 && !hasStarted) {
-				trainList.get(e.getTrainId() - 1).setHasStarted(true);
-				//System.out.println("hej3");
-			} else {
-				//System.out.println("hej");
-				stopTrain(e.getTrainId());
-				wait2Seconds(e.getTrainId());
-				startTrain(e.getTrainId());
+				trainList.get(trainID - 1).setHasStarted(true);;
+			} else if (e.getStatus() == 1){
+				int speed = this.trainList.get(trainID - 1).getSpeed();
+				stopTrain(trainID);
+				waitALittle(trainID);
+				startTrain(trainID, speed);
 			}
 
 		}
 
-		void wait2Seconds(int e) {
-			try {
-				this.trainList.get(e - 1).wait(2000);// does not work currently
+		void waitALittle(int tID) {
+			int timeToWait = 1000 + (20 * Math.abs((trainList.get(tID - 1)).getSpeed()));
+			try {				
+				this.trainList.get(tID - 1).sleep(timeToWait);
 			} catch (InterruptedException e1) {
 				// TODO Auto-generated catch block
 				e1.printStackTrace();
 			}
-
 		}
 
-		private void stopTrain(int trainId) {
+		private void stopTrain(int tID) {
 			System.out.println("stop train reached");
-			this.trainList.get(trainId - 1).brake();
+			this.trainList.get(tID - 1).brake();
 		}
 
-		private void startTrain(int trainId) {
-			// TODO Auto-generated method stub
-
+		private void startTrain(int tID, int oldSpeed) {
+			System.out.println(oldSpeed + " and " + (oldSpeed * (-1)));
+			this.trainList.get(tID - 1).setSpeed(oldSpeed * (-1));
+			System.out.println("new train speed " + this.trainList.get(tID - 1).getSpeed());
+		}
+		
+		private void startTrain(int tID) {
+			//do nothing
 		}
 	}
 }
