@@ -55,7 +55,17 @@ public class Lab1 {
 		Switch switch4 = new Switch(4, 3, 11, 0, tsi, switchSem4, trainList, switchNeighbor4, terminalList2);
 
 		ArrayList<Switch> switchList = new ArrayList<>(Arrays.asList(switch1, switch2, switch3, switch4));
-
+		
+		ArrayList<Switch> switch1NeighList = new ArrayList<>(Arrays.asList(switch2));
+		ArrayList<Switch> switch2NeighList = new ArrayList<>(Arrays.asList(switch1, switch3));
+		ArrayList<Switch> switch3NeighList = new ArrayList<>(Arrays.asList(switch2, switch4));
+		ArrayList<Switch> switch4NeighList = new ArrayList<>(Arrays.asList(switch3));
+		
+		switch1.initSwitchNeigh(switch1NeighList);
+		switch2.initSwitchNeigh(switch2NeighList);
+		switch3.initSwitchNeigh(switch3NeighList);
+		switch4.initSwitchNeigh(switch4NeighList);
+		
 		train1.acquireSwitches(switchList);
 		train2.acquireSwitches(switchList);
 		train1.acquireTerminals(terminalList3);
@@ -131,6 +141,7 @@ public class Lab1 {
 		public void brake() {
 			try {
 				this.tsi.setSpeed(this.id, 0);
+				this.speed = 0;
 			} catch (CommandException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -221,13 +232,17 @@ public class Lab1 {
 
 		int orientation;
 		ArrayList<Train> trainList;
-		ArrayList<Semaphore> switchNeighList;
+		ArrayList<Semaphore> switchNeighSemList;
+		ArrayList<Switch> switchNeighList;
 		ArrayList<Terminal> terminalList;
 		int neighborAmount;
 		Semaphore[] semaphoreToRelease = new Semaphore[2];
+		
+		int oldSpeed;
 
 		public Switch(int id, int posX, int posY, int ori, TSimInterface tsi, Semaphore switchSem,
-				ArrayList<Train> trainList, ArrayList<Semaphore> switchNeighbor, ArrayList<Terminal> terminalList) {
+				ArrayList<Train> trainList, ArrayList<Semaphore> switchNeighbor, 
+				ArrayList<Terminal> terminalList) {
 			this.id = id;
 			this.posX = posX;
 			this.posY = posY;
@@ -235,8 +250,9 @@ public class Lab1 {
 			this.tsi = tsi;
 			this.switchSem = switchSem;
 			this.trainList = trainList;
-			this.switchNeighList = switchNeighbor;
-			this.neighborAmount = switchNeighList.size();
+			this.switchNeighSemList = switchNeighbor;
+			
+			this.neighborAmount = switchNeighSemList.size();
 			this.terminalList = terminalList;
 
 			initSensors();
@@ -255,6 +271,10 @@ public class Lab1 {
 		public HashMap<int[], Sensor> getSensorMap() {
 			return this.sensorMap;
 		}
+		
+		public void initSwitchNeigh(ArrayList<Switch> switchNeighList){
+			this.switchNeighList = switchNeighList;
+		}
 
 		void onSensorEvent(SensorEvent e, int sensorCounter) {
 			this.sensorCounter = sensorCounter;
@@ -264,13 +284,21 @@ public class Lab1 {
 
 		private void stopTrain(int trainId) {
 			System.out.println("stop train reached");
+			oldSpeed = this.trainList.get(trainId - 1).getSpeed();
 			this.trainList.get(trainId - 1).brake();
+			this.switchSem.release();
+		}
+		
+		private void startTrain(int tID) {
+			System.out.println(this.oldSpeed);
+			this.trainList.get(tID - 1).setSpeed(this.oldSpeed);
 		}
 
 		private void goSouth(int trainId) {
 			try {
-					this.tsi.setSwitch(this.posX, this.posY, this.orientation * -1 + 1);
+				this.tsi.setSwitch(this.posX, this.posY, this.orientation);
 				//this.tsi.setSwitch(this.posX, this.posY, this.orientation * -1 + 1);
+				semaphoreToRelease[1] = this.switchSem;
 			} catch (CommandException e) {
 				// TODO Auto-generated catch block
 				System.out.println("rad 263 " + this.posX + " " + this.posY);
@@ -280,7 +308,7 @@ public class Lab1 {
 		}
 
 		void changeSwitch(SensorEvent e) {
-
+			
 			// System.out.println("ChangeSwitch reached");
 			
 			boolean hasTerminal = this.terminalList != null;
@@ -295,10 +323,12 @@ public class Lab1 {
 				if (this.orientation == 1) {
 					
 					if (e.getXpos() == westSensor.posX && e.getYpos() == westSensor.posY) {
+						westSensor.changeStatus(e);
 						try {
-							System.out.println("rad 297 " + switchNeighList.get(0));
+							System.out.println("rad 297 " + switchNeighSemList.get(0));
 
-							if (switchNeighList.get(0).tryAcquire()) {
+							if (switchNeighSemList.get(0).tryAcquire()) {
+								
 								System.out.println("Acquired semaphore");
 								this.tsi.setSwitch(this.posX, this.posY, 0);
 
@@ -307,7 +337,7 @@ public class Lab1 {
 
 							}
 							if(!(hasTerminal)) {
-								semaphoreToRelease[0] = switchNeighList.get(1);
+								semaphoreToRelease[0] = switchNeighSemList.get(1);
 								semaphoreToRelease[1] = this.switchSem;
 								//semaphoreToRelease = switchNeighList.get(1);
 								
@@ -321,7 +351,7 @@ public class Lab1 {
 							e1.printStackTrace();
 						}
 					} else if (e.getXpos() == eastSensor.posX && e.getYpos() == eastSensor.posY) {
-
+						eastSensor.changeStatus(e);
 						try {
 							if (hasTerminal) {
 								if (terminalList.get(0).getTermSem().tryAcquire()) {
@@ -329,10 +359,11 @@ public class Lab1 {
 								} else if(terminalList.get(1).getTermSem().tryAcquire()) {
 									this.tsi.setSwitch(this.posX, this.posX, 1);
 								}
-							} else if (switchNeighList.get(neighborAmount - 1).tryAcquire()) {
+							} else if (switchNeighSemList.get(neighborAmount - 1).tryAcquire()) {
 								System.out.println("Acquired semaphore");
 								this.tsi.setSwitch(this.posX, this.posY, 0);
 							} else {
+								System.out.println("shoud go south");
 								goSouth(e.getTrainId());
 							}
 						} catch (CommandException e1) {
@@ -340,15 +371,17 @@ public class Lab1 {
 							e1.printStackTrace();
 							System.out.println("rad 341 " + this.posX + " " + this.posY);
 						}
-						semaphoreToRelease[0] = switchNeighList.get(0);
+						semaphoreToRelease[0] = switchNeighSemList.get(0);
 					}
 					else if (e.getXpos() == southSensor.posX && e.getYpos() == southSensor.posY){ //crashes here now for some reason
+						southSensor.changeStatus(e);
 						try {
-						 if (switchNeighList.get(neighborAmount - 1).tryAcquire()) {
+						 if (switchNeighSemList.get(neighborAmount - 1).tryAcquire()) {
 							System.out.println("Acquired semaphore");
 							this.tsi.setSwitch(this.posX, this.posY, 1);
 						} else {
-							stopTrain(e.getTrainId());
+							if (switchNeighList.get(neighborAmount - 1).getActiveSensor() != null)
+								stopTrain(e.getTrainId());
 						}
 						
 						} catch (CommandException e1) {
@@ -359,27 +392,29 @@ public class Lab1 {
 							semaphoreToRelease[0] = terminalList.get(1).getTermSem();
 							semaphoreToRelease[1] = this.switchSem;
 						}
-						else {
+						/*else {
 							semaphoreToRelease[0] = switchNeighList.get(1);
-						}
+						}*/
 					}
 				}
 				// West -> East orientation
 				else if (this.orientation == 0) {
 					if (e.getXpos() == westSensor.posX && e.getYpos() == westSensor.posY) {
+						westSensor.changeStatus(e);
 						try {
 							if (hasTerminal) {
 								System.out.println("ska välja en terminal");
+								System.out.println(this.terminalList.get(1).getTermSem());
 								int termViTar = -1;
 								if (this.terminalList.get(0).getTermSem().tryAcquire()) {
-									this.tsi.setSwitch(posX, posY, 0);
+									this.tsi.setSwitch(posX, posY, 1);
 									termViTar = 0;
 								} else if(this.terminalList.get(1).getTermSem().tryAcquire()){
-									this.tsi.setSwitch(posX, posX, 1);
+									this.tsi.setSwitch(posX, posX, 0);
 									termViTar = 1;
 								}
 								System.out.println("terminal " + termViTar);
-							} else if (switchNeighList.get(0).tryAcquire()) {
+							} else if (switchNeighSemList.get(0).tryAcquire()) {
 								System.out.println("Acquired semaphore");
 								this.tsi.setSwitch(this.posX, this.posY, 1);
 							} else {
@@ -390,10 +425,11 @@ public class Lab1 {
 							System.out.println("rad 373 " + this.posX + " " + this.posY);
 							e1.printStackTrace();
 						}
-						semaphoreToRelease[0] = switchNeighList.get(neighborAmount - 1);
+						semaphoreToRelease[0] = switchNeighSemList.get(neighborAmount - 1);
 					} else if (e.getXpos() == eastSensor.posX && e.getYpos() == eastSensor.posY) {
+						eastSensor.changeStatus(e);
 						try {
-							if (switchNeighList.get(neighborAmount - 1).tryAcquire()) {
+							if (switchNeighSemList.get(neighborAmount - 1).tryAcquire()) {
 								System.out.println("Acquired semaphore");
 								this.tsi.setSwitch(this.posX, this.posY, 1);
 
@@ -410,12 +446,13 @@ public class Lab1 {
 							semaphoreToRelease[1] = this.switchSem;
 							System.out.println("released terminal at" + terminalList.get(0).getPos()[1]);
 						} else {
-							semaphoreToRelease[0] = switchNeighList.get(0);
+							semaphoreToRelease[0] = switchNeighSemList.get(0);
 						}
 						
 					} else if (e.getXpos() == southSensor.posX && e.getYpos() == southSensor.posY){
+						southSensor.changeStatus(e);
 						try {
-							 if (switchNeighList.get(neighborAmount - 1).tryAcquire()) {
+							 if (switchNeighSemList.get(neighborAmount - 1).tryAcquire()) {
 								System.out.println("Acquired semaphore");
 								this.tsi.setSwitch(this.posX, this.posY, 0);
 							} else {
@@ -427,9 +464,9 @@ public class Lab1 {
 						if(hasTerminal) {
 							semaphoreToRelease[0] = terminalList.get(1).getTermSem();
 							semaphoreToRelease[1] = this.switchSem;
-						} else {
+						} /*else {
 							semaphoreToRelease[0] = switchNeighList.get(0);
-						}
+						}*/
 					}
 				}
 			}
@@ -438,17 +475,48 @@ public class Lab1 {
 		}
 
 		public void newCheckSensorCounter(Semaphore[] semsToRelease) {
-			if (sensorCounter == 4) { 
+			if (sensorCounter == 4) {		
 				for (Semaphore sem : semsToRelease) {
 					if (sem != null) {
 						sem.release();	
-						if(sem == terminalList.get(0).getTermSem())
-							System.out.println("it does");
-					}					
+					}
+				}
+				if(getActiveSensor() != null) {
+						System.out.println(this.trainList.get(getActiveSensor().getLatestEvent().getTrainId()-1).getSpeed());
+						if(this.trainList.get(getActiveSensor().getLatestEvent().getTrainId()-1).getSpeed() == 0) {
+							System.out.println("Found Active Sensor");
+							try {
+								if (this.orientation == 1) {
+									this.tsi.setSwitch(this.posX, this.posY, 0);
+								} else if (this.orientation == 0) {
+									this.tsi.setSwitch(this.posX, this.posY, 1);
+								}
+							} catch (CommandException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+							startTrain(getActiveSensor().getLatestEvent().getTrainId());
+					}
 				}
 				semaphoreToRelease[0] = null;
 				semaphoreToRelease[1] = null;
+			
 			}
+		}
+		
+		public Sensor getActiveSensor() {
+			
+			if(this.westSensor.getStatus() == 1) {
+				return this.westSensor;
+			}else if (this.eastSensor.getStatus() == 1) {
+				return this.eastSensor;
+			}else if (this.southSensor.getStatus() == 1) {
+				return this.southSensor;
+			}
+			else {
+				return null;
+			}
+			
 		}
 		
 		
@@ -462,7 +530,8 @@ public class Lab1 {
 
 		final int posX;
 		final int posY;
-
+		SensorEvent latestEvent;
+		
 		// Status is 2 if inactive, 1 if active
 		int Status;
 
@@ -474,6 +543,7 @@ public class Lab1 {
 
 		public void changeStatus(SensorEvent e) {
 			this.Status = e.getStatus();
+			latestEvent = e;
 		}
 
 		public int getStatus() {
@@ -485,6 +555,11 @@ public class Lab1 {
 
 			return temp;
 		}
+		
+		public SensorEvent getLatestEvent() {
+			return latestEvent;
+		}
+		
 	}
 
 	class Terminal {
@@ -506,6 +581,7 @@ public class Lab1 {
 			this.neighSem = neighSem;
 
 			terminalSem.tryAcquire();
+			neighSem.tryAcquire();
 			initSensor(posX, posY);
 		}
 
