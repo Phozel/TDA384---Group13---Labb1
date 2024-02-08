@@ -317,7 +317,7 @@ public class Lab1 {
 		ArrayList<Switch> switchNeighList;
 		ArrayList<Terminal> terminalList;
 		int neighborAmount;
-		Semaphore[] semaphoreToRelease = new Semaphore[2];
+		Semaphore terminalSemToRelease = null;
 		Track trackToRelease = null;
 		//Train stoppedTrain = null;
 		
@@ -380,9 +380,9 @@ public class Lab1 {
 			changeSwitch(e);
 		}
 
-		private void stopAndRelease(int trainId) {//TODO: ta bort om den inte används
-			this.switchSem.release();
+		private void releaseAndStop(int trainId) {
 			stopTrain(trainId);
+			this.switchSem.release();
 		}
 
 		private void stopTrain(int trainId) {
@@ -398,26 +398,22 @@ public class Lab1 {
 			currentTrain.setIsStopped(false);
 		}
 
-		private void goSouth() {
-			try {
-				this.tsi.setSwitch(this.posX, this.posY, this.orientation);
-			} catch (CommandException e) {
-				System.out.println("rad 360 " + this.posX + " " + this.posY);
-				e.printStackTrace();
-			}
+		private void goSouth(SensorEvent event) {
+			changeSwitchIfSafe(event, this.orientation); //kanske ett problem att den kan kö stop här
+			//this.tsi.setSwitch(this.posX, this.posY, this.orientation);
 		}
 
 		void resetTrackVal(){
 			if(this.trackToRelease != null){
 				this.trackToRelease.setHasTrain(false);
-				for(Train train : trainList){
-					if(train.getIsStopped()){
-						System.out.println("train is stopped");
-						Track trackToCheck = train.getNextTrack();
-						if(trackToCheck != null && !trackToCheck.getHasTrain()){
-						 	startTrain(train.getTrainId());
-						 	train.setJustStarted(true);
-						}
+			}
+			for(Train train : trainList){
+				if(train.getIsStopped()){
+					System.out.println("train is stopped");
+					Track trackToCheck = train.getNextTrack();
+					if(trackToCheck != null && !trackToCheck.getHasTrain()){
+						 startTrain(train.getTrainId());
+						 train.setJustStarted(true);
 					}
 				}
 			}
@@ -437,12 +433,9 @@ public class Lab1 {
 
 		void doStuffForCorrectSwitch(SensorEvent event){
 
-			//this.trainList.get(event.getTrainId()-1).updateTrackHashmap(this.trainOnTrackMap);
-
 			boolean hasTerminal = this.terminalList != null;
 			int switchChangeDir = Math.abs(this.orientation - 1);
 			boolean trainCanGoSouth = false;
-			//Track nextTrack = null;
 			
 			switch(checkSensorPos(event)){
 				case "w":
@@ -454,18 +447,16 @@ public class Lab1 {
 						}
 						System.out.println("ska kolla upcoming track");
 						checkUpcomingTrack(event, 0, switchChangeDir, trainCanGoSouth);
-
-						semaphoreToRelease[0] = this.switchSem;
 						trackToRelease = this.trainOnTrackMap.get(switchNeighList.get(1)); // the previous track
 					} else {
-						semaphoreToRelease[0] = this.switchSem;
+
 						if(this.orientation == 1){
 							checkUpcomingTrack(event, 0, switchChangeDir, false);
-							semaphoreToRelease[1] = this.terminalList.get(0).getTermSem();
+							terminalSemToRelease = this.terminalList.get(0).getTermSem();
 						} else { // West -> East
 							this.trainList.get(event.getTrainId()-1).setNextTrack(null);  
 							trackToRelease = this.trainOnTrackMap.get(switchNeighList.get(0));
-							acquireTerminal(1);
+							acquireTerminal(1, event);
 						}
 					}
 					break;
@@ -477,19 +468,17 @@ public class Lab1 {
 							trainCanGoSouth = true;	
 						}
 						checkUpcomingTrack(event, 1, switchChangeDir, trainCanGoSouth);
-						semaphoreToRelease[0] = this.switchSem;
 						trackToRelease = this.trainOnTrackMap.get(switchNeighList.get(0)); // the previous track
 					} else {
-						semaphoreToRelease[0] = this.switchSem;
 						
 						if(this.orientation == 1){
 							this.trainList.get(event.getTrainId()-1).setNextTrack(null);
 							trackToRelease = this.trainOnTrackMap.get(switchNeighList.get(0));
-							acquireTerminal(0);
+							acquireTerminal(0, event);
 						} else {// West -> East
 							this.trainList.get(event.getTrainId()-1).setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(0)));
 							checkUpcomingTrack(event, 0, switchChangeDir, false);
-							semaphoreToRelease[1] = this.terminalList.get(0).getTermSem();
+							terminalSemToRelease = this.terminalList.get(0).getTermSem();
 						}
 					}
 					break;
@@ -498,13 +487,11 @@ public class Lab1 {
 					if(!(hasTerminal)){
 						this.trainList.get(event.getTrainId()-1).setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(switchChangeDir)));
 						checkUpcomingTrack(event, switchChangeDir, this.orientation, false); //switchChangeDir och orientation är "motsatser"
-						semaphoreToRelease[0] = this.switchSem;
 					} else {
+						terminalSemToRelease = this.terminalList.get(1).getTermSem();
 						int nextSwitch = 0; 
 						this.trainList.get(event.getTrainId()-1).setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(nextSwitch)));
 						checkUpcomingTrack(event, nextSwitch, this.orientation, false);
-						semaphoreToRelease[0] = this.switchSem;
-						semaphoreToRelease[1] = this.terminalList.get(1).getTermSem();
 					}
 					break;
 				default:
@@ -512,19 +499,15 @@ public class Lab1 {
 			}
 		}
 
-		void acquireTerminal(int switchDirStraight){
-			try{
-				if (terminalList.get(0).getTermSem().tryAcquire()) {
-					System.out.println("acquired the first terminal");
-					this.tsi.setSwitch(posX, posY, switchDirStraight);
-				} else if(terminalList.get(1).getTermSem().tryAcquire()) {
-					System.out.println("the first terminal was occupied");
-					goSouth();
-				}	
-			} catch (CommandException e) {
-				e.printStackTrace();
-			}
-		
+		void acquireTerminal(int switchDirStraight, SensorEvent event){
+			if (terminalList.get(0).getTermSem().tryAcquire()) {
+				System.out.println("acquired the first terminal");
+				changeSwitchIfSafe(event, switchDirStraight);
+			} else if(terminalList.get(1).getTermSem().tryAcquire()) {
+				System.out.println("the first terminal was occupied");
+				goSouth(event);
+			}	
+			
 		}
 
 		void checkUpcomingTrack(SensorEvent event, int nextSwitch, int switchChangeDirection, boolean canGoSouth){
@@ -533,30 +516,21 @@ public class Lab1 {
 				System.out.println("made it to 504");
 				changeSwitchIfSafe(event, switchChangeDirection);
 			} else if (canGoSouth){
-				goSouth();
+				goSouth(event);
 			} else {
 				System.out.println("upcoming track was taken");
-				stopTrain(event.getTrainId());
+				releaseAndStop(event.getTrainId());
 			}	
 		}
 		
-		
 
-		void changeSwitchIfSafe(SensorEvent event, int switchDir){
-			if (this.switchSem.tryAcquire()) { //bytte till nuvarande
-			
-				System.out.println("Acquired semaphore " + this.switchSem);
+		void changeSwitchIfSafe(SensorEvent event, int switchDir){ //the method that has the rep
 				try {
 					System.out.println("Switch flips");
 					this.tsi.setSwitch(this.posX, this.posY, switchDir);
 				} catch (CommandException e) {
 					e.printStackTrace();
 				}
-
-			} else {
-				System.out.println("couldn't acquire semaphore " + this.switchSem);
-				stopTrain(event.getTrainId());
-			}
 		}
 			
 
@@ -564,26 +538,30 @@ public class Lab1 {
 
 			if (this.sensorCounter < 2 || this.trainList.get(e.getTrainId() -1).getJustStarted()) {
 				this.trainList.get(e.getTrainId() -1).setJustStarted(false);
-				doStuffForCorrectSwitch(e);
+				if (this.switchSem.tryAcquire()){
+					System.out.println("Acquired semaphore " + this.switchSem);
+					doStuffForCorrectSwitch(e);
+				} else {
+					System.out.println("couldn't acquire semaphore " + this.switchSem);
+					stopTrain(e.getTrainId());
+				}
 			}
 
-			newCheckSensorCounter(semaphoreToRelease);
 			System.out.println("sensorCounter " + sensorCounter);
+			newCheckSensorCounter();
 		}
 
-		public void newCheckSensorCounter(Semaphore[] semsToRelease) {
-			if (sensorCounter == 4) {	
-				this.switchSem.release();	
-				for (Semaphore sem : semsToRelease) {
-					if (sem != null) {
-						sem.release();
-						System.out.println(sem + " checking sems row 576");	
-					}
-				}
+		public void newCheckSensorCounter() {
+			if (sensorCounter == 4) {
 				resetTrackVal();
-				semaphoreToRelease[0] = null;
-				semaphoreToRelease[1] = null;
-			
+				if (terminalSemToRelease != null) {
+					terminalSemToRelease.release();
+					System.out.println(terminalSemToRelease + " checking sems row 574");	
+					terminalSemToRelease = null;
+				}
+				this.switchSem.release();	
+				System.out.println(this.switchSem + " checking sems row 576");
+				//terminalSemToRelease = null;
 			}
 		}
 		
@@ -599,7 +577,6 @@ public class Lab1 {
 			else {
 				return null;
 			}
-			
 		}
 	}
 
