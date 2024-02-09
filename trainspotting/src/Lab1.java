@@ -15,13 +15,10 @@ public class Lab1 {
 
 		TSimInterface tsi = TSimInterface.getInstance();
 
-		Train train1 = new Train(1, speed1, tsi);
-		Train train2 = new Train(2, speed2, tsi);
+		Train train1 = new Train(1, speed1, 1, tsi);
+		Train train2 = new Train(2, speed2, -1, tsi);
 
-		//t1 = new Thread(train1);
-		//t2 = new Thread(train2);
-
-		ArrayList trainList = new ArrayList();
+		ArrayList<Train> trainList = new ArrayList<Train>();
 		trainList.add(train1);
 		trainList.add(train2);
 
@@ -112,7 +109,7 @@ public class Lab1 {
 			e.printStackTrace(); // or only e.getMessage() for the error
 			System.exit(1);
 		}
-	
+		
 		
 	}
 	
@@ -138,8 +135,11 @@ public class Lab1 {
 		private volatile int speed;
 		private int maxSpeed = 20; // TODO: Byt 
 		private int id;
+		private int startDir; // Train 1 == 1, Train 2 == -1
 		volatile int sensorCounter = 0;
 		Track nextTrack = null;
+		Track currentTrack = null;
+		SensorEvent lastEvent = null;
 		
 		TSimInterface tsi;
 		private ArrayList<Switch> switchList;
@@ -151,10 +151,12 @@ public class Lab1 {
 		boolean hasStarted = false;
 		boolean isStopped = false;
 		boolean justStarted = false; //temporär ksk?
+		boolean hasTerminal = false;
 
-		public Train(int id, int speed, TSimInterface tsi) {
+		public Train(int id, int speed, int startDir, TSimInterface tsi) {
 			this.speed = speed;
 			this.id = id;
+			this.startDir = startDir;
 			this.tsi = tsi;
 			this.oldSpeed = this.speed;
 		}
@@ -235,10 +237,26 @@ public class Lab1 {
 		public void setJustStarted(boolean justStarted) {
 			this.justStarted = justStarted;
 		}
+		
+		public int getStartDir(){
+			return this.startDir;
+		}
 
-		// public void updateTrackHashmap(HashMap<Switch, Track> switchTrackMap) {
-		// 	this.trainOnTrackMap = switchTrackMap;
-		// }
+		public boolean getHasTerminal() {
+			return this.hasTerminal;
+		}
+
+		public void setHasTerminal(boolean newBool) {
+			this.hasTerminal = newBool;
+		}
+
+		public Track getCurrentTrack(){
+			return this.currentTrack;
+		}
+
+		public void setCurrentTrack(Track aTrack){
+			this.currentTrack = aTrack;
+		}
 		
 		public Track getNextTrack(){
 			return this.nextTrack;
@@ -247,7 +265,30 @@ public class Lab1 {
 		public void setNextTrack(Track nextTrack){
 			this.nextTrack = nextTrack;
 		}
+		
+		public void setLastEvent(SensorEvent e){
+			this.lastEvent = e;
+		}
 
+		public SensorEvent getLastEvent() {
+			return this.lastEvent;
+		}
+
+		Switch checkIfEventInSwitch(SensorEvent event){
+			int ePos[] = new int[] { event.getXpos(), event.getYpos() };
+			for (int i = 0; i < 4; i++) {
+				Set<int[]> keySet = switchList.get(i).getSensorMap().keySet();
+				for (int[] key : keySet) {
+					if (key[0] == ePos[0] && key[1] == ePos[1]) {
+						Switch correctSwitch = switchList.get(i);
+						return correctSwitch;
+					}
+				}
+			}
+			return null;
+		}
+	
+		
 		@Override
 		public void run() {
 			while (true) {
@@ -265,7 +306,7 @@ public class Lab1 {
 						Set<int[]> keySet = switchList.get(i).getSensorMap().keySet();
 						for (int[] key : keySet) {
 							if (key[0] == ePos[0] && key[1] == ePos[1]) {
-								this.incSensorCounter(); //ksk inte behöver vara this.
+								this.incSensorCounter();
 								switchList.get(i).onSensorEvent(event, this.sensorCounter);
 								this.checkSensorCounter();
 							}
@@ -319,9 +360,6 @@ public class Lab1 {
 		int neighborAmount;
 		Semaphore terminalSemToRelease = null;
 		Track trackToRelease = null;
-		//Train stoppedTrain = null;
-		
-		//int oldSpeed;
 
 		public Switch(int id, int posX, int posY, int sXOffset, int sYOffset, int ori, TSimInterface tsi, Semaphore switchSem,
 				ArrayList<Train> trainList, ArrayList<Semaphore> switchNeighbor, 
@@ -376,7 +414,6 @@ public class Lab1 {
 
 		void onSensorEvent(SensorEvent e, int sensorCounter) {
 			this.sensorCounter = sensorCounter;
-			//System.out.println("detta är sensor counter: " +  this.sensorCounter);
 			changeSwitch(e);
 		}
 
@@ -388,7 +425,6 @@ public class Lab1 {
 		private void stopTrain(int trainId) {
 			System.out.println("stop train reached");
 			this.trainList.get(trainId - 1).brake();
-			//this.switchSem.release();
 			this.trainList.get(trainId - 1).setIsStopped(true);
 		}
 		
@@ -400,23 +436,42 @@ public class Lab1 {
 
 		private void goSouth(SensorEvent event) {
 			changeSwitchIfSafe(event, this.orientation); //kanske ett problem att den kan kö stop här
-			//this.tsi.setSwitch(this.posX, this.posY, this.orientation);
 		}
 
-		void resetTrackVal(){
+		void resetTrackVal(int trainId){
+			this.trackToRelease = trainList.get(trainId-1).getCurrentTrack();
 			if(this.trackToRelease != null){
+				System.out.println(trainId + " should release track: " + trackToRelease);
 				this.trackToRelease.setHasTrain(false);
+			} else {
+				System.out.println( "next track " + trainList.get(trainId-1).getNextTrack());
 			}
+		}
+
+		void startStoppedTrain(){
 			for(Train train : trainList){
 				if(train.getIsStopped()){
+					System.out.println(train.getNextTrack());
 					System.out.println("train is stopped");
 					Track trackToCheck = train.getNextTrack();
 					if(trackToCheck != null && !trackToCheck.getHasTrain()){
-						 startTrain(train.getTrainId());
-						 train.setJustStarted(true);
+						System.out.println("Should start train " + train.id);
+						SensorEvent e = train.getLastEvent();
+						if (getSwitch(e, train) != null){
+							train.setIsStopped(false);
+							train.setJustStarted(true);
+							changeSwitch(e);
+							startTrain(train.getTrainId());
+							train.setJustStarted(true);
+						}
 					}
 				}
 			}
+		}
+
+		Switch getSwitch(SensorEvent event, Train train) {
+			Switch correctSwitch = train.checkIfEventInSwitch(event);
+			return correctSwitch;
 		}
 
 		String checkSensorPos(SensorEvent event){
@@ -436,61 +491,60 @@ public class Lab1 {
 			boolean hasTerminal = this.terminalList != null;
 			int switchChangeDir = Math.abs(this.orientation - 1);
 			boolean trainCanGoSouth = false;
-			
+			Train train = this.trainList.get(event.getTrainId()-1);
+			train.setLastEvent(event);
+			System.out.println(train.getNextTrack());
+			train.setCurrentTrack(train.getNextTrack());
+
 			switch(checkSensorPos(event)){
 				case "w":
-					this.trainList.get(event.getTrainId()-1).setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(0)));  
-					westSensor.changeStatus(event);
+					train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(0)));  
 					if(!(hasTerminal)) {
 						if(this.orientation == 0){
 							trainCanGoSouth = true;	
 						}
 						System.out.println("ska kolla upcoming track");
 						checkUpcomingTrack(event, 0, switchChangeDir, trainCanGoSouth);
-						trackToRelease = this.trainOnTrackMap.get(switchNeighList.get(1)); // the previous track
 					} else {
 
 						if(this.orientation == 1){
 							checkUpcomingTrack(event, 0, switchChangeDir, false);
 							terminalSemToRelease = this.terminalList.get(0).getTermSem();
 						} else { // West -> East
-							this.trainList.get(event.getTrainId()-1).setNextTrack(null);  
-							trackToRelease = this.trainOnTrackMap.get(switchNeighList.get(0));
+							train.setNextTrack(null);  //kan vara onödigt
 							acquireTerminal(1, event);
 						}
 					}
 					break;
 				case "e":
-					eastSensor.changeStatus(event);
 					if(!(hasTerminal)){
-						this.trainList.get(event.getTrainId()-1).setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(1)));
+						train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(1)));
 						if(this.orientation == 1){
 							trainCanGoSouth = true;	
 						}
 						checkUpcomingTrack(event, 1, switchChangeDir, trainCanGoSouth);
-						trackToRelease = this.trainOnTrackMap.get(switchNeighList.get(0)); // the previous track
 					} else {
 						
 						if(this.orientation == 1){
-							this.trainList.get(event.getTrainId()-1).setNextTrack(null);
-							trackToRelease = this.trainOnTrackMap.get(switchNeighList.get(0));
+							train.setNextTrack(null);
 							acquireTerminal(0, event);
 						} else {// West -> East
-							this.trainList.get(event.getTrainId()-1).setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(0)));
+							train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(0)));
+							System.out.println(train.getNextTrack() + " next track :)");
 							checkUpcomingTrack(event, 0, switchChangeDir, false);
 							terminalSemToRelease = this.terminalList.get(0).getTermSem();
 						}
 					}
 					break;
 				case "s":
-					southSensor.changeStatus(event);
+					train.setCurrentTrack(null);
 					if(!(hasTerminal)){
-						this.trainList.get(event.getTrainId()-1).setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(switchChangeDir)));
+						train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(switchChangeDir)));
 						checkUpcomingTrack(event, switchChangeDir, this.orientation, false); //switchChangeDir och orientation är "motsatser"
 					} else {
 						terminalSemToRelease = this.terminalList.get(1).getTermSem();
 						int nextSwitch = 0; 
-						this.trainList.get(event.getTrainId()-1).setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(nextSwitch)));
+						train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(nextSwitch)));
 						checkUpcomingTrack(event, nextSwitch, this.orientation, false);
 					}
 					break;
@@ -506,7 +560,7 @@ public class Lab1 {
 			} else if(terminalList.get(1).getTermSem().tryAcquire()) {
 				System.out.println("the first terminal was occupied");
 				goSouth(event);
-			}	
+			}
 			
 		}
 
@@ -518,11 +572,27 @@ public class Lab1 {
 			} else if (canGoSouth){
 				goSouth(event);
 			} else {
+				System.out.println();
 				System.out.println("upcoming track was taken");
 				releaseAndStop(event.getTrainId());
 			}	
 		}
 		
+		void setNextTrackForTrain(int trainId) { //kan vara så att vi ska tilldela nextTrack till currentTrack i denna också
+			System.out.println("setNextTrackForSwitch");
+			Train train = trainList.get(trainId-1);
+			int nextSwitch = 0;
+			if(switchNeighList.size() == 1 && train.getHasTerminal()){
+				train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(nextSwitch)));
+			} else {
+				int nextSwitchDir = (train.getStartDir() * train.getSpeed());
+				if(nextSwitchDir > 0){
+					nextSwitch = 1;
+				}
+				train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(nextSwitch)));
+			}
+			
+		}
 
 		void changeSwitchIfSafe(SensorEvent event, int switchDir){ //the method that has the rep
 				try {
@@ -533,7 +603,6 @@ public class Lab1 {
 				}
 		}
 			
-
 		void changeSwitch(SensorEvent e) {
 
 			if (this.sensorCounter < 2 || this.trainList.get(e.getTrainId() -1).getJustStarted()) {
@@ -543,39 +612,32 @@ public class Lab1 {
 					doStuffForCorrectSwitch(e);
 				} else {
 					System.out.println("couldn't acquire semaphore " + this.switchSem);
+					setNextTrackForTrain(e.getTrainId());
 					stopTrain(e.getTrainId());
 				}
 			}
 
 			System.out.println("sensorCounter " + sensorCounter);
-			newCheckSensorCounter();
+			newCheckSensorCounter(e.getTrainId());
 		}
 
-		public void newCheckSensorCounter() {
+		public void newCheckSensorCounter(int trainId) {
 			if (sensorCounter == 4) {
-				resetTrackVal();
 				if (terminalSemToRelease != null) {
 					terminalSemToRelease.release();
 					System.out.println(terminalSemToRelease + " checking sems row 574");	
 					terminalSemToRelease = null;
+					this.trainList.get(trainId - 1).setHasTerminal(false);
+				} else {
+					System.out.println("should reset trackVal");
+					resetTrackVal(trainId);
 				}
-				this.switchSem.release();	
+				// System.out.println(trainId + "track " + this.trainOnTrackMap.get(switchNeighList.get(0)));
+				// System.out.println(trainId + "has train" + this.trainOnTrackMap.get(switchNeighList.get(0)).getHasTrain());
+				
+				this.switchSem.release();
+				startStoppedTrain();	
 				System.out.println(this.switchSem + " checking sems row 576");
-				//terminalSemToRelease = null;
-			}
-		}
-		
-		public Sensor getActiveSensor() {
-			
-			if(this.westSensor.getStatus() == 1) {
-				return this.westSensor;
-			}else if (this.eastSensor.getStatus() == 1) {
-				return this.eastSensor;
-			}else if (this.southSensor.getStatus() == 1) {
-				return this.southSensor;
-			}
-			else {
-				return null;
 			}
 		}
 	}
@@ -593,11 +655,6 @@ public class Lab1 {
 			this.posX = posX;
 			this.posY = posY;
 			this.Status = 2;
-		}
-
-		public void changeStatus(SensorEvent e) {
-			this.Status = e.getStatus();
-			latestEvent = e;
 		}
 
 		public int getStatus() {
@@ -657,7 +714,6 @@ public class Lab1 {
 			boolean hasStarted = trainList.get(trainID - 1).getHasStarted();
 
 			if (e.getStatus() == 2 && !hasStarted) {
-				System.out.println("how many times?");
 				terminalSem.tryAcquire();
 				trainList.get(trainID - 1).setHasStarted(true);
 			} else if (e.getStatus() == 1){
@@ -667,6 +723,8 @@ public class Lab1 {
 				waitALittle(trainID);
 				startTrain(trainID, speed);
 			}
+
+			this.trainList.get(e.getTrainId() - 1).setHasTerminal(true);
 
 			
 		}
