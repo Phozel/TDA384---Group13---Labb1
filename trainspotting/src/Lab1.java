@@ -13,6 +13,9 @@ public class Lab1 {
 
 	public Lab1(int speed1, int speed2) {
 
+		/*
+		 * The declarations of the trains, switches, terminals, intersection, and semaphores.
+		 */
 		TSimInterface tsi = TSimInterface.getInstance();
 
 		Train train1 = new Train(1, speed1, 1, tsi);
@@ -97,6 +100,9 @@ public class Lab1 {
 			train.acquireIntersection(intersection);
 		}
 		
+		/*
+		 * Start the trains 
+		 */
 		train1.start();
 		train2.start();
 
@@ -116,6 +122,9 @@ public class Lab1 {
 		
 	}
 	
+	/*
+	 * Track class.
+	 */
 	class Track {
 
 		boolean hasTrain;
@@ -140,6 +149,10 @@ public class Lab1 {
 
 	}
 
+	/*
+	 * Train class.
+	 * This class also contains the run-method that the threads use.
+	 */
 	class Train extends Thread {
 
 		private volatile int speed;
@@ -201,6 +214,9 @@ public class Lab1 {
 			return speed;
 		}
 		
+		/*
+		 * Method to set the speed of the train, this method also saves the previous speed.
+		 */
 		public void setSpeed(int newSpeed) {
 			try {
 				this.oldSpeed = this.speed;
@@ -303,6 +319,9 @@ public class Lab1 {
 			this.terminalToRelease = termToRelease;
 		}
 
+		/*
+		 * Method to check if an event that occured is related to a switch
+		 */
 		Switch checkIfEventInSwitch(SensorEvent event){
 			int ePos[] = new int[] { event.getXpos(), event.getYpos() };
 			for (int i = 0; i < 4; i++) {
@@ -317,7 +336,9 @@ public class Lab1 {
 			return null;
 		}
 	
-		
+		/*
+		 * Main run method, any sensor event that occurs goes through this method.
+		 */
 		@Override
 		public void run() {
 			while (true) {
@@ -353,6 +374,9 @@ public class Lab1 {
 			}
 		}
 
+		/*
+		 * Method to start the train object if stopped
+		 */
 		public void startIfStopped() {
 			Switch switchToChange = checkIfEventInSwitch(this.lastEvent);
 			if(switchToChange != null){
@@ -366,6 +390,10 @@ public class Lab1 {
 		}
 	}
 
+	/*
+	 * Swich Class.
+	 * Contains most of the important logic.
+	 */
 	class Switch {
 
 		final int id;
@@ -399,6 +427,9 @@ public class Lab1 {
 		Semaphore terminalSemToRelease = null;
 		Track trackToRelease = null;
 
+		/*
+		 * Switch constructor
+		 */
 		public Switch(int id, int posX, int posY, int sXOffset, int sYOffset, int ori, TSimInterface tsi, Semaphore switchSem,
 				ArrayList<Train> trainList, ArrayList<Semaphore> switchNeighbor, 
 				ArrayList<Terminal> terminalList) {
@@ -419,6 +450,10 @@ public class Lab1 {
 			initSensors();
 		}
 
+		/*
+		 * Method to initialize the switch's internal sensors.
+		 * The sensors' positions are hard coded.
+		 */
 		void initSensors() {
 
 			westSensor = new Sensor(posX - 2, posY);
@@ -454,26 +489,43 @@ public class Lab1 {
 			acquireSwitchOrStop(e);
 		}
 
+		/*
+		 * Method to stop a train and release the appropriate semaphore
+		 */
 		private void releaseAndStop(int trainId) {
 			stopTrain(trainId);
 			this.switchSem.release();
 		}
 
+		/*
+		 * Method to stop a train
+		 */
 		private void stopTrain(int trainId) {
 			this.trainList.get(trainId).brake();
 			this.trainList.get(trainId).setIsStopped(true);
 		}
 		
+		/*
+		 * Method to start a train
+		 */
 		private void startTrain(int tID) {
 			Train currentTrain = this.trainList.get(tID);
 			currentTrain.setSpeed(currentTrain.getOldSpeed());
 			currentTrain.setIsStopped(false);
 		}
 
+		/*
+		 * Method to tell the switch to change southwards.
+		 */
 		private void goSouth(SensorEvent event) {
 			changeSwitchIfSafe(event, this.orientation);
 		}
 
+		/*
+		 * Method to determine if any train has stopped at a switch, and if so, start them.
+		 * This method should only be called upon when you're sure that no collisions or
+		 * derailment errors can occur.
+		 */
 		void startStoppedTrain(){
 			for(Train train : trainList){
 				if(train.getIsStopped()){
@@ -486,11 +538,18 @@ public class Lab1 {
 			}
 		}
 
+		/*
+		 * Method to get the correct switch for an event
+		 */
 		Switch getSwitch(SensorEvent event, Train train) {
 			Switch correctSwitch = train.checkIfEventInSwitch(event);
 			return correctSwitch;
 		}
 
+		/*
+		 * Method to check if an event corresponds to any of a switch's sensors.
+		 * Will return "none" if false.
+		 */
 		String checkSensorPos(SensorEvent event){
 			String val = "none";
 			if (event.getXpos() == westSensor.posX && event.getYpos() == westSensor.posY) {
@@ -514,7 +573,13 @@ public class Lab1 {
 			int innerTrainId = event.getTrainId() -1;
 			Train train = this.trainList.get(innerTrainId);
 
+			/*
+			 * Switch statement to check the event's position and if it corresponds correctly with a sensor in a switch
+			 */
 			switch(checkSensorPos(event)){
+				/*
+				 * Case: The event corresponded to some switch's western sensor
+				 */
 				case "w":
 					train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(0)));  
 					if(!(hasTerminal)) {
@@ -532,6 +597,9 @@ public class Lab1 {
 						}
 					}
 					break;
+				/*
+				 * Case: The event corresponded to some switch's eastern sensor
+				 */
 				case "e":
 					if(!(hasTerminal)){
 						train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(1)));
@@ -550,6 +618,9 @@ public class Lab1 {
 						}
 					}
 					break;
+				/*
+				 * Case: The event corresponded to some switch's southern sensor
+				 */
 				case "s":
 					train.setCurrentTrack(null);
 					if(!(hasTerminal)){
@@ -566,6 +637,10 @@ public class Lab1 {
 			}
 		}
 		
+		/*
+		 * Method to acquire a free terminal, the method will always try and acquire the top-most
+		 * terminal of each pair first.
+		 */
 		void acquireTerminal(int switchDirStraight, SensorEvent event){
 			Train train = this.trainList.get(event.getTrainId() - 1);
 			train.setHeadingFromTerminal(false);
@@ -575,10 +650,12 @@ public class Lab1 {
 				train.setTerminalNum(1);
 				goSouth(event);
 			}
-			
-			
 		}
 
+		/*
+		 * Method to check if the next track has a train on it, and if it does, call the appropriate 
+		 * method to handle the situation.
+		 */
 		void checkUpcomingTrack(SensorEvent event, int nextSwitch, int switchChangeDirection, boolean canGoSouth){
 			int theTrainId = event.getTrainId()-1;
 			if (!(this.trainOnTrackMap.get(switchNeighList.get(nextSwitch)).getHasTrain())){
@@ -591,6 +668,9 @@ public class Lab1 {
 			}	
 		}
 		
+		/*
+		 * Method to designate the different tracks correctly between the trains.
+		 */
 		void setNextTrackForTrain(int trainId) {
 			Train train = trainList.get(trainId);
 			int nextSwitch = 0;
@@ -613,6 +693,10 @@ public class Lab1 {
 			}
 		}
 
+		/*
+		 * Method to change the switch direction if safe, this method should only
+		 * be called upon when you're sure that no issues will occur when changing the switch.
+		 */
 		void changeSwitchIfSafe(SensorEvent event, int switchDir){ 
 			try {
 				this.tsi.setSwitch(this.posX, this.posY, switchDir);
@@ -621,12 +705,19 @@ public class Lab1 {
 			}
 		}
 		
+		/*
+		 * Method to check if a switch is free, or if the train needs to stop.
+		 */
 		void acquireSwitchOrStop(SensorEvent e) {
 
 			int trainId = e.getTrainId() - 1;
 			Train train = trainList.get(trainId);
 			train.setLastEvent(e);
 
+			/*
+			 * Check if the train's internal sensorCounter < 2, or if it just has started i.e. if it 
+			 * needed to stop at the switch.
+			 */
 			if (trainList.get(trainId).sensorCounter < 2 || this.trainList.get(trainId).getJustStarted()) {
 				
 				if (this.switchSem.tryAcquire()){
@@ -649,8 +740,17 @@ public class Lab1 {
 		*/
 		public void checkSensorCounter(int trainId) {
 			Train train = trainList.get(trainId);
+			
+			/*
+			 * Initial check if train has passed switch or intersection
+			 */
 			if (train.getSensorCounter() == 4) {
 				int terminalToRelease = train.getTerminalNum();
+
+				/*
+				 * Check if there is a terminal semaphore to release and the train is leaving a terminal.
+				 * If this isn't the case, reset the track val instead.
+				 */
 				if (terminalToRelease >= 0 && train.headingFromTerminal){
 					terminalList.get(terminalToRelease).getTermSem().release();
 					train.setHasTerminal(false);
@@ -659,6 +759,11 @@ public class Lab1 {
 				} else {
 					resetTrackVal(trainId);
 				}
+
+				/*
+				 * General check if the train is not heading directly from a terminal,
+				 * if headingFromTermnial is false, then reset track val.
+				 */
 				if (!(train.getHeadingFromTerminal())){
 					resetTrackVal(trainId);
 				}
