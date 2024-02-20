@@ -193,7 +193,10 @@ public class Lab1 {
 		private void resetSensorCounter() {
 			sensorCounter = 0;
 		}
-		
+
+		/*
+		 * If the sensorCounter is 4, the train has passed the switch or intersection so the counter is reset.
+		 */
 		private void checkSensorCounter() {
 			if(sensorCounter == 4)
 				resetSensorCounter();
@@ -228,6 +231,18 @@ public class Lab1 {
 			setSpeed(0);
 		}
 
+		public void acquireSwitches(ArrayList<Switch> switchList) {
+			this.switchList = switchList;
+		}
+
+		public void acquireTerminals(ArrayList<Terminal> terminalList) {
+			this.terminalList = terminalList;
+		}
+
+		public void acquireIntersection(Intersection intersection){
+			this.intersection = intersection;
+		}
+
 		public int getTrainId() {
 			return id;
 		}
@@ -246,18 +261,6 @@ public class Lab1 {
 
 		public boolean getIsStopped(){
 			return this.isStopped;
-		}
-
-		public void acquireSwitches(ArrayList<Switch> switchList) {
-			this.switchList = switchList;
-		}
-
-		public void acquireTerminals(ArrayList<Terminal> terminalList) {
-			this.terminalList = terminalList;
-		}
-
-		public void acquireIntersection(Intersection intersection){
-			this.intersection = intersection;
 		}
 
 		public boolean getJustStarted() {
@@ -291,7 +294,7 @@ public class Lab1 {
 		public Track getNextTrack(){
 			return this.nextTrack;
 		}
-		//terminalList
+
 		public void setNextTrack(Track nextTrack){
 			this.nextTrack = nextTrack;
 		}
@@ -313,7 +316,7 @@ public class Lab1 {
 		}
 
 		/*
-		 * Method to check if an event that occured is related to a switch
+		 * Method to check if an event that occured is related to a switch and returns that switch if so.
 		 */
 		Switch checkIfEventInSwitch(SensorEvent event){
 			int ePos[] = new int[] { event.getXpos(), event.getYpos() };
@@ -524,7 +527,7 @@ public class Lab1 {
 				if(train.getIsStopped()){
 					Track trackToCheck = train.getNextTrack();
 					if(trackToCheck != null && !trackToCheck.getHasTrain()){
-						int trainId = train.getTrainId() - 1;
+						//int trainId = train.getTrainId() - 1; TODO: ta bort
 						train.startIfStopped();
 					}
 				}
