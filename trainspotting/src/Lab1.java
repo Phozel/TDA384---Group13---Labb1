@@ -139,10 +139,6 @@ public class Lab1 {
 			this.hasTrain = newBool;
 		}
 
-		public int getTrackId(){
-			return this.trackId;
-		}
-
 	}
 
 	/*
@@ -154,7 +150,8 @@ public class Lab1 {
 		private volatile int speed;
 		private int id;
 		private int startDir; // Train 1: 1, Train 2: -1
-		volatile int sensorCounter = 0;
+		volatile int sensorCounter = 0; //used to measure how many of the sensors of a switch or intersection the train has passed. 
+		// the sensorCounter is incremented once every time the train activates or inactivates a sensor so it will become 4 once it has passed a switch or intersection.
 		Track nextTrack = null;
 		Track currentTrack = null;
 		SensorEvent lastEvent = null;
@@ -193,11 +190,11 @@ public class Lab1 {
 			sensorCounter++;
 		}
 		
-		public void resetSensorCounter() {
+		private void resetSensorCounter() {
 			sensorCounter = 0;
 		}
 		
-		public void checkSensorCounter() {
+		private void checkSensorCounter() {
 			if(sensorCounter == 4)
 				resetSensorCounter();
 		}
@@ -414,7 +411,7 @@ public class Lab1 {
 
 		boolean hasActiveSensor = false;
 
-		int orientation;
+		int orientation; //0 or 1
 		ArrayList<Train> trainList;
 		ArrayList<Semaphore> switchNeighSemList;
 		ArrayList<Switch> switchNeighList;
