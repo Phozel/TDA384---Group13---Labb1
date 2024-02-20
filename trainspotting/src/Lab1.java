@@ -36,6 +36,7 @@ public class Lab1 {
 		Semaphore switchSem4 = new Semaphore(1);
 
 		Semaphore intersectSem = new Semaphore(1);
+		//9 semaphores in total
 
 		ArrayList<Semaphore> switchNeighbor1 = new ArrayList<>(Arrays.asList(switchSem2));
 		ArrayList<Semaphore> switchNeighbor2 = new ArrayList<>(Arrays.asList(switchSem1, switchSem3));
@@ -115,7 +116,6 @@ public class Lab1 {
 			System.exit(1);
 		}
 		
-		
 	}
 	
 	/*
@@ -123,8 +123,8 @@ public class Lab1 {
 	 */
 	class Track {
 
-		boolean hasTrain;
-		int trackId;
+		private boolean hasTrain;
+		private int trackId;
 		
 		public Track(int id){
 			this.hasTrain = false;
@@ -371,7 +371,7 @@ public class Lab1 {
 		}
 
 		/*
-		 * Method to start the train object if stopped
+		 * Method to start a train object if it had stopped earlier
 		 */
 		public void startIfStopped() {
 			Switch switchToChange = checkIfEventInSwitch(this.lastEvent);
@@ -387,7 +387,7 @@ public class Lab1 {
 	}
 
 	/*
-	 * Swich Class.
+	 * Switch Class.
 	 * Contains most of the important logic.
 	 */
 	class Switch {
@@ -414,7 +414,7 @@ public class Lab1 {
 
 		boolean hasActiveSensor = false;
 
-		int orientation; //0 or 1
+		int orientation; //0 or 1. 0 being West -> East
 		ArrayList<Train> trainList;
 		ArrayList<Semaphore> switchNeighSemList;
 		ArrayList<Switch> switchNeighList;
@@ -514,7 +514,7 @@ public class Lab1 {
 		 * Method to tell the switch to change southwards.
 		 */
 		private void goSouth(SensorEvent event) {
-			changeSwitchIfSafe(event, this.orientation);
+			flipSwitch(event, this.orientation);
 		}
 
 		/*
@@ -568,24 +568,27 @@ public class Lab1 {
 			boolean trainCanGoSouth = false;
 			int innerTrainId = event.getTrainId() -1;
 			Train train = this.trainList.get(innerTrainId);
+			int westToEast = 1;
+			int eastToWest = 0;
 
 			/*
 			 * Switch statement to check the event's position and if it corresponds correctly with a sensor in a switch
 			 */
 			switch(checkSensorPos(event)){
+
 				/*
 				 * Case: The event corresponded to some switch's western sensor
 				 */
 				case "w":
 					train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(0)));  
 					if(!(hasTerminal)) {
-						if(this.orientation == 0){
+						if(this.orientation == eastToWest){
 							trainCanGoSouth = true;	
 						}
 						checkUpcomingTrack(event, 0, switchChangeDir, trainCanGoSouth);
 					} else {
 
-						if(this.orientation == 1){
+						if(this.orientation == westToEast){
 							checkUpcomingTrack(event, 0, switchChangeDir, false);
 							train.setTerminalNum(0); 
 						} else { // West -> East
@@ -599,13 +602,13 @@ public class Lab1 {
 				case "e":
 					if(!(hasTerminal)){
 						train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(1)));
-						if(this.orientation == 1){
+						if(this.orientation == westToEast){
 							trainCanGoSouth = true;	
 						}
 						checkUpcomingTrack(event, 1, switchChangeDir, trainCanGoSouth);
 					} else {
 						
-						if(this.orientation == 1){
+						if(this.orientation == westToEast){
 							acquireTerminal(0, event);
 						} else {// West -> East
 							train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(0)));
@@ -618,10 +621,10 @@ public class Lab1 {
 				 * Case: The event corresponded to some switch's southern sensor
 				 */
 				case "s":
-					train.setCurrentTrack(null);
+					train.setCurrentTrack(null); //we do not care about the southern tracks, if the track above it is taken, the southern track will always be available when you have 2 trains
 					if(!(hasTerminal)){
 						train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(switchChangeDir)));
-						checkUpcomingTrack(event, switchChangeDir, this.orientation, false); //switchChangeDir och orientation är "motsatser"
+						checkUpcomingTrack(event, switchChangeDir, this.orientation, false);
 					} else {
 						int nextSwitch = 0; 
 						train.setNextTrack(this.trainOnTrackMap.get(switchNeighList.get(nextSwitch)));
@@ -634,14 +637,14 @@ public class Lab1 {
 		}
 		
 		/*
-		 * Method to acquire a free terminal, the method will always try and acquire the top-most
-		 * terminal of each pair first.
+		 * Method to acquire an available terminal, the method will always try and acquire the top-most
+		 * terminal(terminal 0) of each pair first.
 		 */
 		void acquireTerminal(int switchDirStraight, SensorEvent event){
 			Train train = this.trainList.get(event.getTrainId() - 1);
 			train.setHeadingFromTerminal(false);
 			if (this.terminalList.get(0).getTermSem().tryAcquire()) {
-				changeSwitchIfSafe(event, switchDirStraight);
+				flipSwitch(event, switchDirStraight);
 			} else if(this.terminalList.get(1).getTermSem().tryAcquire()) {
 				train.setTerminalNum(1);
 				goSouth(event);
@@ -649,14 +652,14 @@ public class Lab1 {
 		}
 
 		/*
-		 * Method to check if the next track has a train on it, and if it does, call the appropriate 
-		 * method to handle the situation.
+		 * Method to check if the next track has a train on it, and if it does not the train can proceed. Otherwise  
+		 * the train will go south or stop depending on if is possible to go south.
 		 */
 		void checkUpcomingTrack(SensorEvent event, int nextSwitch, int switchChangeDirection, boolean canGoSouth){
 			int theTrainId = event.getTrainId()-1;
 			if (!(this.trainOnTrackMap.get(switchNeighList.get(nextSwitch)).getHasTrain())){
 				this.trainOnTrackMap.get(switchNeighList.get(nextSwitch)).setHasTrain(true);
-				changeSwitchIfSafe(event, switchChangeDirection);
+				flipSwitch(event, switchChangeDirection);
 			} else if (canGoSouth){
 				goSouth(event);
 			} else {
@@ -665,7 +668,7 @@ public class Lab1 {
 		}
 		
 		/*
-		 * Method to designate the different tracks correctly between the trains.
+		 * Method to designate the different tracks correctly for the train.
 		 */
 		void setNextTrackForTrain(int trainId) {
 			Train train = trainList.get(trainId);
@@ -690,10 +693,10 @@ public class Lab1 {
 		}
 
 		/*
-		 * Method to change the switch direction if safe, this method should only
-		 * be called upon when you're sure that no issues will occur when changing the switch.
+		 * Method to flip the switch direction, this method should only be - and is only
+		 * called upon when you're sure that no issues will occur when flipping the switch.
 		 */
-		void changeSwitchIfSafe(SensorEvent event, int switchDir){ 
+		void flipSwitch(SensorEvent event, int switchDir){ 
 			try {
 				this.tsi.setSwitch(this.posX, this.posY, switchDir);
 			} catch (CommandException e) {
@@ -702,7 +705,7 @@ public class Lab1 {
 		}
 		
 		/*
-		 * Method to check if a switch is free, or if the train needs to stop.
+		 * Method that tries to acquire the semaphore of the switch. Otherwise the train has to stop.
 		 */
 		void acquireSwitchOrStop(SensorEvent e) {
 
@@ -711,7 +714,7 @@ public class Lab1 {
 			train.setLastEvent(e);
 
 			/*
-			 * Check if the train's internal sensorCounter < 2, or if it just has started i.e. if it 
+			 * Check if the train's internal sensorCounter < 2, or if it has just started, i.e. if it 
 			 * needed to stop at the switch.
 			 */
 			if (trainList.get(trainId).sensorCounter < 2 || this.trainList.get(trainId).getJustStarted()) {
@@ -732,7 +735,7 @@ public class Lab1 {
 		}
 
 		/* 
-		* This method resets the correct semaphores when appropriate
+		* This method releases the correct semaphores when the critical section is over and done with.
 		*/
 		public void checkSensorCounter(int trainId) {
 			Train train = trainList.get(trainId);
@@ -758,7 +761,7 @@ public class Lab1 {
 
 				/*
 				 * General check if the train is not heading directly from a terminal,
-				 * if headingFromTermnial is false, then reset track val.
+				 * if headingFromTerminal is false, then reset track val.
 				 */
 				if (!(train.getHeadingFromTerminal())){
 					resetTrackVal(trainId);
@@ -810,6 +813,7 @@ public class Lab1 {
 		/*
 		 * Method to get the last event logged at a sensor. 
 		 * If the event status is 2, then the sensor is inactive, if it is 1, then it is active.
+		 * Used for starting trains that have previously stopped.
 		 */
 		public SensorEvent getLatestEvent() {
 			return latestEvent;
@@ -894,7 +898,7 @@ public class Lab1 {
 		}
 
 		/*
-		 * Method to determine how long a train should wait at the terminal
+		 * Method that determinse how long a train should wait at the terminal and which puts the thread to sleep for the given amount of time.
 		 */
 		void waitALittle(int tID) {
 			int timeToWait = 1000 + (20 * Math.abs((trainList.get(tID)).getSpeed()));
@@ -906,14 +910,14 @@ public class Lab1 {
 		}
 
 		/*
-		 * Method to stop the train arriving at the terminal
+		 * Method to stop the train at the terminal
 		 */
 		private void stopTrain(int tID) {
 			this.trainList.get(tID).brake();
 		}
 
 		/*
-		 * Method to start the train at the terminal
+		 * Method to start the train at the terminal, but in the opposite direction of what it had before
 		 */
 		private void startTrain(int tID, int oldSpeed) {
 			this.trainList.get(tID).setSpeed(oldSpeed * (-1));
@@ -925,7 +929,6 @@ public class Lab1 {
 		private void startStoppedTrain(){
 			for(Train train : trainList){
 				if(train.getIsStopped()){
-					int trainId = train.getTrainId() - 1;
 					train.startIfStopped();
 				}
 			}
