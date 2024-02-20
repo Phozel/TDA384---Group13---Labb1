@@ -109,10 +109,6 @@ public class Lab1 {
 		try {
 			tsi.setSpeed(train1.getTrainId(), train1.getSpeed());
 			tsi.setSpeed(train2.getTrainId(), train2.getSpeed());
-			tsi.setSwitch(17, 7, 1);
-			tsi.setSwitch(15, 9, 1);
-			tsi.setSwitch(4, 9, 0);
-			tsi.setSwitch(3, 11, 0);
 
 		} catch (CommandException e) {
 			e.printStackTrace(); // or only e.getMessage() for the error
