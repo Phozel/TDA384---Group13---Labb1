@@ -355,13 +355,23 @@ public class Lab1 {
 					}
 
 					for (Terminal terminal : terminalList) {
-						if (terminal.getPos()[0] == ePos[0] && terminal.getPos()[1] == ePos[1])
+						if (terminal.getPos()[0] == ePos[0] && terminal.getPos()[1] == ePos[1]){
 							terminal.onTerminalSensorEvent(event);
+
+						}
+
+							
 					}
 
 					//InterSection
-					intersection.onIntersectionSensorEvent(event);
+					if(intersection.eventConnectedToIntersection(event)){
+						this.incSensorCounter();
+						intersection.onIntersectionSensorEvent(event);
+						this.checkSensorCounter();
+					}
 					this.checkSensorCounter();
+
+
 
 				} catch (CommandException | InterruptedException e) {
 					e.printStackTrace();
@@ -375,13 +385,14 @@ public class Lab1 {
 		 */
 		public void startIfStopped() {
 			Switch switchToChange = checkIfEventInSwitch(this.lastEvent);
+			this.setIsStopped(false);
+			this.setJustStarted(true);
 			if(switchToChange != null){
-				this.setIsStopped(false);
-				this.setJustStarted(true);
 				switchToChange.onSensorEvent(this.lastEvent);
 				switchToChange.startTrain(this.id-1);
 			} else {
 				intersection.startTrain(this.lastEvent);
+				
 			}
 		}
 	}
@@ -710,14 +721,14 @@ public class Lab1 {
 		void acquireSwitchOrStop(SensorEvent e) {
 
 			int trainId = e.getTrainId() - 1;
-			Train train = trainList.get(trainId);
+			Train train = this.trainList.get(trainId);
 			train.setLastEvent(e);
 
 			/*
 			 * Check if the train's internal sensorCounter < 2, or if it has just started, i.e. if it 
 			 * needed to stop at the switch.
 			 */
-			if (trainList.get(trainId).sensorCounter < 2 || this.trainList.get(trainId).getJustStarted()) {
+			if (this.trainList.get(trainId).sensorCounter < 2 || this.trainList.get(trainId).getJustStarted()) {
 				
 				if (this.switchSem.tryAcquire()){
 					if(!(train.getJustStarted())){
@@ -988,13 +999,7 @@ public class Lab1 {
 		public void onIntersectionSensorEvent(SensorEvent e){
 			Train train = trainList.get(e.getTrainId()-1);
 			train.setLastEvent(e);
-			
-			if(eventConnectedToIntersection(e)){
-				if(!(train.getJustStarted())){
-					train.incSensorCounter();
-				}
-				acquireInterOrBrake(train);
-			}
+			acquireInterOrBrake(train);
 		}
 
 		/*
@@ -1011,11 +1016,13 @@ public class Lab1 {
 					thus, nothing actually happens here. But the intersection should still be acquired
 					to prevent the other train from passing through the intersection and colliding with
 					the currently passing train. */
+				train.setJustStarted(false);
 				if(this.intersectSem.tryAcquire()){
 				} else {
 					train.setIsStopped(true);
 					train.brake();
 				}
+				
 			}
 			checkSensorCounter(train);
 		}
@@ -1023,7 +1030,7 @@ public class Lab1 {
 		/*
 		 * Method to check if an event is relevant to the intersection or not.
 		 */
-		private boolean eventConnectedToIntersection(SensorEvent event){
+		public boolean eventConnectedToIntersection(SensorEvent event){
 			for(Sensor sensor : sensors){
 				if((event.getXpos() == sensor.getPosList()[0]) && event.getYpos() == sensor.getPosList()[1] ){
 					return true;
@@ -1039,6 +1046,7 @@ public class Lab1 {
 		 */
 		private void checkSensorCounter(Train train) {
 			if (train.getSensorCounter() == 4) {
+				//this.setJustStarted(false);
 				this.intersectSem.release();
 				startStoppedTrain();
 			}
@@ -1062,7 +1070,7 @@ public class Lab1 {
 			if(eventConnectedToIntersection(event)){
 				Train currentTrain = this.trainList.get(event.getTrainId()-1);
 				currentTrain.setSpeed(currentTrain.getOldSpeed());
-				currentTrain.setIsStopped(false);
+				//currentTrain.setIsStopped(false);
 			}
 		}
 	}
